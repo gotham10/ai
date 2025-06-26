@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 API_KEY = "AIzaSyCQ_XCnZsqWIFA-qcHzwSUodnZLvJ9tr6E"
-MODEL = "gemeni-2.5-flash"
+MODEL = "models/gemini-1.5-flash"
 
 @app.route('/', methods=['POST'])
 def chat():
@@ -16,19 +16,16 @@ def chat():
 
     try:
         res = requests.post(
-            "https://gemeni.googleapis.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json"
-            },
+            f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:generateContent?key={API_KEY}",
+            headers={"Content-Type": "application/json"},
             json={
-                "model": MODEL,
-                "messages": [{"role": "user", "content": prompt}]
+                "contents": [
+                    {"parts": [{"text": prompt}]}
+                ]
             }
         )
         res.raise_for_status()
-        response_json = res.json()
-        content = response_json["choices"][0]["message"]["content"]
+        content = res.json()["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"response": content})
     except requests.RequestException as e:
         return jsonify({"error": "Failed to get response from API", "details": str(e)}), 500
