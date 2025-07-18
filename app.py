@@ -2,36 +2,52 @@ from flask import Flask, request, jsonify
 import requests
 import os
 
-app = Flask(__name__)
-API_KEY = "AIzaSyCQ_XCnZsqWIFA-qcHzwSUodnZLvJ9tr6E"
-MODEL = "models/gemini-1.5-flash"
+app =Flask(__name__)
 
-@app.route('/', methods=['POST'])
+API_KEY = os.getenv("GEMINI_API_KEY")
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
+@app.route('/api/chat', methods=['POST'])
 def chat():
-    data = request.get_json()
-    prompt = data.get("prompt")
+    if not API_KEY:
+        return jsonify({"error": "API key is not configured on the server"}), 500
 
-    if not prompt:
-        return jsonify({"error": "Missing prompt"}), 400
+    data = request.get_json()
+    if not data or not data.get("prompt"):
+        return jsonify({"error": "Request must be JSON with a 'prompt' field"}), 400
+
+    prompt = data["prompt"]
+    if not isinstance(prompt, str) or not prompt.strip():
+        return jsonify({"error": "The 'prompt' field must be a non-empty string"}), 400
+
+    headers = {
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "contents": [
+            {"parts": [{"text": prompt}]}
+        ]
+    }
+
+    params = {
+        "key": API_KEY
+    }
 
     try:
-        res = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/{MODEL}:generateContent?key={API_KEY}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [
-                    {"parts": [{"text": prompt}]}
-                ]
-            }
-        )
-        res.raise_for_status()
-        content = res.json()["candidates"][0]["content"]["parts"][0]["text"]
+        response = requests.post(API_URL, headers=headers, json=payload, params=params, timeout=30)
+        response.raise_for_status()
+        
+        response_json = response.json()
+        content = response_json["candidates"][0]["content"]["parts"][0]["text"]
+        
         return jsonify({"response": content})
-    except requests.RequestException as e:
-        return jsonify({"error": "Failed to get response from API", "details": str(e)}), 500
-    except (KeyError, IndexError):
-        return jsonify({"error": "Unexpected response format from API"}), 500
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": "Failed to connect to the generative API", "details": str(e)}), 502
+    except (KeyError, IndexError, TypeError):
+        return jsonify({"error": "Invalid or unexpected response format from the generative API"}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
